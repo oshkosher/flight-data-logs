@@ -1,0 +1,17 @@
+Here are some sample logs to use for testing.
+
+avidyne-sr22-datewrap-Engine_050911_233509_out.log
+  This is an Avidyne log starting just before midnight UTC.
+  Avidyne logs contain just the time in each entry, so this is a good
+  test of the day rollover code.
+
+garmin-sf50-log_240810_104802_KAPA.csv
+  Just for fun, this is from a single-engine jet, so it doesn't have stuff
+  like cylinder head temperatures, but it does have latitude, longitude,
+  alitude and all that.
+
+In garmin-sf50-log_240810_104802_KAPA.csv, column 4 (AtvWpt) there's a
+non-ASCII character, hex 0x80 in lines 69 through 1002: 6385<0x80>
+I don't know what's going on there. The csv.reader class choked on it
+until I changed the file encoding to Latin-1.
+
