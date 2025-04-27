@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 
 
-"""To use this class, create the object with the name of a logfile as an
+"""
+To use this class, create the object with the name of a logfile as an
 argument:
   log = FlightLog('log_161119_154619_KEYW.csv')
 
@@ -16,7 +17,7 @@ To see what data is in the log:
 To extract data:
   data = log.read(['elapsed', 'Latitude', 'Longitude'])
 
-This will read the full of the file, parsing and converting
+This will read the full file, parsing and converting
 each column listed, and return a list of lists:
   data[0] = 'elapsed' column data
   data[1] = 'Latitude' column data
