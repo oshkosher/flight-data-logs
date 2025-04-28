@@ -575,8 +575,13 @@ class AvidyneFlightLog(FlightLog):
 
         # third line contains column names
         reader = csv.reader(self.inf)
-        column_names = [s.strip() for s in reader.__next__()]
-        first_entry = reader.__next__()
+        try:
+            column_names = [s.strip() for s in reader.__next__()]
+            first_entry = reader.__next__()
+        except StopIteration:
+            # __next__ failed; the file doesn't even have a full set
+            # of headers
+            raise FlightLogException('File is empty')
 
         # set self.columns and self.column_idx
         self._set_column_mappings(column_names, avidyne_column_table)
@@ -670,7 +675,12 @@ class GarminFlightLog(FlightLog):
 
         # third line contains column names
         reader = csv.reader(self.inf)
-        column_names = [s.strip() for s in reader.__next__()]
+        try:
+            column_names = [s.strip() for s in reader.__next__()]
+        except StopIteration:
+            # __next__ failed; the file doesn't even have a full set
+            # of headers
+            raise FlightLogException('File is empty')
 
         # set self.columns and self.column_idx
         self._set_column_mappings(column_names, garmin_column_table)

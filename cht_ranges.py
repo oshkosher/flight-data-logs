@@ -1,5 +1,27 @@
 #!/usr/bin/env python3
 
+"""
+Read one or more flight logs and track cylinder head temperatures.
+Generate a histogram showing how much time cylinders spent in
+10-degree temperature ranges.
+
+Since each cylinder is independent, the values are in terms of
+cylinder-seconds. For example, If six cylinders maintain a temperature
+of 345 degrees for ten seconds, there would be an entry like:
+  340-349  60
+
+Sample output format:
+
+CHT temp    pct  time (seconds)
+240-249    5.32  222
+250-259    4.89  204
+260-269    5.60  234
+270-279    7.61  318
+280-289    5.60  234
+290-299    4.31  180
+
+"""
+
 from flight_log import FlightLog
 from flight_log import FlightLogException
 import sys
@@ -64,6 +86,10 @@ def report(temp_slots):
     some slots are empty.
     """
     key_list = list(temp_slots.keys())
+    if not key_list:
+        print('No data')
+        return
+    
     key_list.sort()
     min_slot = key_list[0]
     max_slot = key_list[-1]
@@ -82,13 +108,17 @@ def report(temp_slots):
 def main(args):
     temp_slots = {}
 
-    for filename in args:
-        # print(filename)
+    for i, filename in enumerate(args):
         try:
             read_log(filename, temp_slots)
+            if len(args) > 1:
+                sys.stdout.write(f'\r{i+1} of {len(args)} logs read')
         except FlightLogException as e:
-            sys.stderr.write(f'Error reading {filename}: ' + str(e) + '\n')
+            sys.stderr.write(f'\nError reading {filename}: ' + str(e) + '\n')
 
+    if len(args) > 1:
+        sys.stdout.write('\n')
+            
     report(temp_slots)
     
 
