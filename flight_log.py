@@ -63,6 +63,7 @@ VENDOR_GARMIN = 'garmin'
 COLUMN_NAME_TIMESTAMP = 'timestamp'
 COLUMN_NAME_ELAPSED = 'elapsed'
 
+
 def parse_float(string):
     """
     Parse a float or return None on failure.
@@ -85,7 +86,7 @@ def parse_int(string):
 
 
 # regular expression for matching unsigned integers
-int_re = re.compile(r'\d+')
+INT_RE = re.compile(r'\d+')
 
 
 def parse_int_tuple(string):
@@ -93,84 +94,82 @@ def parse_int_tuple(string):
     Given a string containing multiple positive integers, return a tuple
     of them.  "2025-10-31" -> (2025, 10, 31)
     """
-    return tuple(int(int_str) for int_str in int_re.findall(string))
+    return tuple(int(int_str) for int_str in INT_RE.findall(string))
 
 
 class ColumnDef:
     """
     Encapsulates a column name and data type.
     All inputs are strings. The data type determines what those strings
-    should be parsed into. Failed parses result in values of None .
+    should be parsed into. Failed parses result in values of None.
     """
     
-    def __init__(self, name, column_type = None):
+    def __init__(self, name, column_type = str):
         """
-        column_type values:
-          'i': integer
-          'f': float
-          otherwise no conversion, just strip leading and trailing whitespace
+        column_type: int, float, or str
+          if str then no conversion is done, just strip()
         """
         self.name = name
         self.column_type = column_type
 
-        self.parse = lambda x: x.strip()
-        if self.column_type == 'f':
+        if self.column_type == float:
             self.parse = parse_float
-        if self.column_type == 'i':
+        elif self.column_type == int:
             self.parse = parse_int
-
-        # a function to parse a string into this column's type
-        # self.parse = column_parsers.get(column_type, lambda x: x)
+        elif self.column_type == str:
+            self.parse = lambda x: x.strip()
+        else:
+            raise FlightLogException(f'ColumnDef unknown column_type: {column_type}')
 
     def __repr__(self):
-        return f'ColumnDef({self.name!r}, {self.column_type!r})'
+        return f'ColumnDef({self.name!r}, {self.column_type.__name__})'
 
 
 # List of recognized columns in Avidyne logs.
 # There may be more columns, and they may not be in this order.
 # For example, a Diamond DA-20 has a four-cylinder engine so it
 # won't have E5, E6, C5, or C6.
-avidyne_columns = [
+AVIDYNE_COLUMNS = [
     ColumnDef("TIME"),
-    ColumnDef("LAT", 'f'),
-    ColumnDef("LON", 'f'),
-    ColumnDef("PALT", 'i'), # pressure altitude (only on turbo)
-    ColumnDef("DALT", 'i'), # density altitude (only on turbo)
-    ColumnDef("E1", 'i'),
-    ColumnDef("E2", 'i'),
-    ColumnDef("E3", 'i'),
-    ColumnDef("E4", 'i'),
-    ColumnDef("E5", 'i'),  # 5 and 6 should be optional to support
-    ColumnDef("E6", 'i'),  # 4 cylinder engines
-    ColumnDef("C1", 'i'),
-    ColumnDef("C2", 'i'),
-    ColumnDef("C3", 'i'),
-    ColumnDef("C4", 'i'),
-    ColumnDef("C5", 'i'),
-    ColumnDef("C6", 'i'),
-    ColumnDef("OILT", 'i'),
-    ColumnDef("OILP", 'i'),
-    ColumnDef("RPM", 'i'),
-    ColumnDef("OAT", 'i'),  # outside air temp (degrees C)
-    ColumnDef("MAP", 'f'),  # manifold pressure (in inches Hg)
-    ColumnDef("FF", 'f'),  # fuel flow (in gph)
-    ColumnDef("USED", 'f'),  # cumulative gallons fuel used
-    ColumnDef("AMP1", 'i'),
-    ColumnDef("AMP2", 'i'),
-    ColumnDef("AMPB", 'i'),
-    ColumnDef("MBUS", 'f'),
-    ColumnDef("EBUS", 'f'),
-    ColumnDef("TIT", 'i'),  # turbine inlet temperature (only on turbo)
+    ColumnDef("LAT", float),
+    ColumnDef("LON", float),
+    ColumnDef("PALT", int), # pressure altitude (only on turbo)
+    ColumnDef("DALT", int), # density altitude (only on turbo)
+    ColumnDef("E1", int),
+    ColumnDef("E2", int),
+    ColumnDef("E3", int),
+    ColumnDef("E4", int),
+    ColumnDef("E5", int),  # 5 and 6 should be optional to support
+    ColumnDef("E6", int),  # 4 cylinder engines
+    ColumnDef("C1", int),
+    ColumnDef("C2", int),
+    ColumnDef("C3", int),
+    ColumnDef("C4", int),
+    ColumnDef("C5", int),
+    ColumnDef("C6", int),
+    ColumnDef("OILT", int),
+    ColumnDef("OILP", int),
+    ColumnDef("RPM", int),
+    ColumnDef("OAT", int),  # outside air temp (degrees C)
+    ColumnDef("MAP", float),  # manifold pressure (in inches Hg)
+    ColumnDef("FF", float),  # fuel flow (in gph)
+    ColumnDef("USED", float),  # cumulative gallons fuel used
+    ColumnDef("AMP1", int),
+    ColumnDef("AMP2", int),
+    ColumnDef("AMPB", int),
+    ColumnDef("MBUS", float),
+    ColumnDef("EBUS", float),
+    ColumnDef("TIT", int),  # turbine inlet temperature (only on turbo)
 ]
 
 
-# index avidyne_columns
-avidyne_column_table = {obj.name: obj for obj in avidyne_columns}
+# index AVIDYNE_COLUMNS
+AVIDYNE_COLUMN_TABLE = {obj.name: obj for obj in AVIDYNE_COLUMNS}
 
 
 # as a quick sanity check, look for these columns and reject files
 # that don't have them
-avidyne_required_columns = ['TIME', 'LAT', 'E1', 'MAP', 'FF']
+AVIDYNE_REQUIRED_COLUMNS = ['TIME', 'LAT', 'E1', 'MAP', 'FF']
 
 
 """
@@ -182,98 +181,98 @@ See "FLIGHT DATA LOGGING" in Garmin manual.
 This list is a subset of the columns in the data files. There are a few
 other columns that either I don't understand or don't seem useful.
 """
-garmin_columns = [
+GARMIN_COLUMNS = [
     ColumnDef('Lcl Date'), # format YYYY-MM-DD
     ColumnDef('Lcl Time'), # format HH:MM:SS
     ColumnDef('UTCOfst'), # format: [+-]hh:mm"
     ColumnDef('AtvWpt'),  # active waypoint
-    ColumnDef('Latitude', 'f'),  # North is positive
-    ColumnDef('Longitude', 'f'),  # East is positive
-    ColumnDef('AltB', 'f'),  # baro-corrected altitude (feet)
-    ColumnDef('BaroA', 'f'),  # altimeter setting (inches Hg)
+    ColumnDef('Latitude', float),  # North is positive
+    ColumnDef('Longitude', float),  # East is positive
+    ColumnDef('AltB', float),  # baro-corrected altitude (feet)
+    ColumnDef('BaroA', float),  # altimeter setting (inches Hg)
     ColumnDef('AltMSL', ),  # GPS-derived altitude (feet)
-    ColumnDef('OAT', 'f'),  # outside air temperature (degrees C)
-    ColumnDef('IAS', 'f'),  # indicated airspeed (knots)
-    ColumnDef('GndSpd', 'f'), # ground speed (knots)
-    ColumnDef('VSpd', 'f'), # vertical speed (feet / minute)
-    ColumnDef('Pitch', 'f'), # pitch (degrees)
-    ColumnDef('Roll', 'f'),  # roll (degrees)
-    ColumnDef('LatAc', 'f'), # lateral acceleration / G force
-    ColumnDef('NormAc', 'f'), # vertical acceleration / G force
-    ColumnDef('HDG', 'f'),  # heading (degrees magnetic)
-    ColumnDef('TRK', 'f'),  # track (degrees magnetic)
-    ColumnDef('volt1', 'f'), # bus 1 voltage
-    ColumnDef('volt2', 'f'), # bus 2 voltage
-    ColumnDef('amp1', 'f'), # alternator 1 amperage
-    ColumnDef('FQtyL', 'f'), # left tank fuel (gallons)
-    ColumnDef('FQtyR', 'f'), # right tank fuel (gallons)
-    ColumnDef('E1 FFlow', 'f'), # fuel flow (gallons / hour)
-    ColumnDef('E1 OilT', 'f'), # oil temp (degrees F)
-    ColumnDef('E1 OilP', 'f'), # oil pressure (psi)
-    ColumnDef('E1 MAP', 'f'), # manifold pressure (inches Hg)
-    ColumnDef('E1 RPM', 'f'), # engine speed (rpms)
-    ColumnDef('E1 %Pwr', 'f'), # percent power, where 1 = 100%
-    ColumnDef('E1 CHT1', 'f'), # cylinder head temps (degrees F)
-    ColumnDef('E1 CHT2', 'f'),
-    ColumnDef('E1 CHT3', 'f'),
-    ColumnDef('E1 CHT4', 'f'),
-    ColumnDef('E1 CHT5', 'f'), # 5 and 6 should be optional to support
-    ColumnDef('E1 CHT6', 'f'), # 4 cylinder engines
-    ColumnDef('E1 EGT1', 'f'), # exhaust gas temps (degrees F)
-    ColumnDef('E1 EGT2', 'f'),
-    ColumnDef('E1 EGT3', 'f'),
-    ColumnDef('E1 EGT4', 'f'),
-    ColumnDef('E1 EGT5', 'f'),
-    ColumnDef('E1 EGT6', 'f'),
-    ColumnDef('E1 TIT1', 'f'), # turbo 1 inlet temp (degrees F)
-    ColumnDef('E1 TIT2', 'f'), # turbo 2 inlet temp (degrees F)
+    ColumnDef('OAT', float),  # outside air temperature (degrees C)
+    ColumnDef('IAS', float),  # indicated airspeed (knots)
+    ColumnDef('GndSpd', float), # ground speed (knots)
+    ColumnDef('VSpd', float), # vertical speed (feet / minute)
+    ColumnDef('Pitch', float), # pitch (degrees)
+    ColumnDef('Roll', float),  # roll (degrees)
+    ColumnDef('LatAc', float), # lateral acceleration / G force
+    ColumnDef('NormAc', float), # vertical acceleration / G force
+    ColumnDef('HDG', float),  # heading (degrees magnetic)
+    ColumnDef('TRK', float),  # track (degrees magnetic)
+    ColumnDef('volt1', float), # bus 1 voltage
+    ColumnDef('volt2', float), # bus 2 voltage
+    ColumnDef('amp1', float), # alternator 1 amperage
+    ColumnDef('FQtyL', float), # left tank fuel (gallons)
+    ColumnDef('FQtyR', float), # right tank fuel (gallons)
+    ColumnDef('E1 FFlow', float), # fuel flow (gallons / hour)
+    ColumnDef('E1 OilT', float), # oil temp (degrees F)
+    ColumnDef('E1 OilP', float), # oil pressure (psi)
+    ColumnDef('E1 MAP', float), # manifold pressure (inches Hg)
+    ColumnDef('E1 RPM', float), # engine speed (rpms)
+    ColumnDef('E1 %Pwr', float), # percent power, where 1 = 100%
+    ColumnDef('E1 CHT1', float), # cylinder head temps (degrees F)
+    ColumnDef('E1 CHT2', float),
+    ColumnDef('E1 CHT3', float),
+    ColumnDef('E1 CHT4', float),
+    ColumnDef('E1 CHT5', float), # 5 and 6 should be optional to support
+    ColumnDef('E1 CHT6', float), # 4 cylinder engines
+    ColumnDef('E1 EGT1', float), # exhaust gas temps (degrees F)
+    ColumnDef('E1 EGT2', float),
+    ColumnDef('E1 EGT3', float),
+    ColumnDef('E1 EGT4', float),
+    ColumnDef('E1 EGT5', float),
+    ColumnDef('E1 EGT6', float),
+    ColumnDef('E1 TIT1', float), # turbo 1 inlet temp (degrees F)
+    ColumnDef('E1 TIT2', float), # turbo 2 inlet temp (degrees F)
     
     # I'll worry about E2 columns when I get a twin
     
-    ColumnDef('AltGPS', 'f'), # GPS-derived altitude, WGS84 datum
-    ColumnDef('TAS', 'i'), # true airspeed (knots)
+    ColumnDef('AltGPS', float), # GPS-derived altitude, WGS84 datum
+    ColumnDef('TAS', int), # true airspeed (knots)
     ColumnDef('HSIS'), # navigation source (e.g. GPS, NAV1, or NAV2)
-    ColumnDef('CRS', 'f'), # navigation cource (degrees magnetic)
-    ColumnDef('NAV1', 'f'), # NAV1 frequency (MHz)
-    ColumnDef('NAV2', 'f'), # NAV2 frequency (MHz)
-    ColumnDef('COM1', 'f'), # COM1 frequency (MHz)
-    ColumnDef('COM2', 'f'), # COM2 frequency (MHz)
-    ColumnDef('HCDI', 'f'), # horizontal course deviation deflection
+    ColumnDef('CRS', float), # navigation cource (degrees magnetic)
+    ColumnDef('NAV1', float), # NAV1 frequency (MHz)
+    ColumnDef('NAV2', float), # NAV2 frequency (MHz)
+    ColumnDef('COM1', float), # COM1 frequency (MHz)
+    ColumnDef('COM2', float), # COM2 frequency (MHz)
+    ColumnDef('HCDI', float), # horizontal course deviation deflection
     ColumnDef('VCDI'), # vertical (glideslope) deflection
-    ColumnDef('WndSpd', 'f'), # wind aloft speed (knots)
-    ColumnDef('WndDr', 'f'), # wind aloft direction (degrees, can be negative)
-    ColumnDef('WptDst', 'f'), # distance to next waypoint
-    ColumnDef('WptBrg', 'f'), # bearing to next waypoint
-    ColumnDef('MagVar', 'f'), # magnetic variation
-    ColumnDef('AfcsOn', 'i'), # 1=autopilot on, 0=off
+    ColumnDef('WndSpd', float), # wind aloft speed (knots)
+    ColumnDef('WndDr', float), # wind aloft direction (degrees, can be negative)
+    ColumnDef('WptDst', float), # distance to next waypoint
+    ColumnDef('WptBrg', float), # bearing to next waypoint
+    ColumnDef('MagVar', float), # magnetic variation
+    ColumnDef('AfcsOn', int), # 1=autopilot on, 0=off
     ColumnDef('RollM'), # flight director roll mode: HDG, GPS, ...
     ColumnDef('PitchM'), # flight director pitch mode: PIT, ALT, ALTS, ...
-    ColumnDef('RollC', 'f'), # flight director roll commanded?
-    ColumnDef('PichC', 'f'), # flight director pitch commanded?
-    ColumnDef('VSpdG', 'f'), # GPS-derived vertical speed
-    ColumnDef('GPSfix', 'f'), # quality of GPS fix? Usually "3D"
+    ColumnDef('RollC', float), # flight director roll commanded?
+    ColumnDef('PichC', float), # flight director pitch commanded?
+    ColumnDef('VSpdG', float), # GPS-derived vertical speed
+    ColumnDef('GPSfix', float), # quality of GPS fix? Usually "3D"
 
     # columns added with an SF50 and a Garmin G3000
     # FYI "E1 FFlow" is in gallons per hour, not pounds per hour,
     # at least in the SF50.
     
-    ColumnDef('AltInd', 'f'),  # indicated altitude, replaces AltB
-    ColumnDef('amp2', 'f'),
-    ColumnDef('E1 Torq', 'f'),  # all null in SF50. Only for turboprops?
-    ColumnDef('E1 NG', 'f'),  # all null in SF50. Only for turboprops?
-    ColumnDef('E1 ITT', 'f'),  # interstage turbine temp, degrees C
-    ColumnDef('E1 N1', 'f'),  # N1 speed, where 1.0 == 100%
-    ColumnDef('E1 N2', 'f'),  # N2 speed, where 1.0 == 100%
+    ColumnDef('AltInd', float),  # indicated altitude, replaces AltB
+    ColumnDef('amp2', float),
+    ColumnDef('E1 Torq', float),  # all null in SF50. Only for turboprops?
+    ColumnDef('E1 NG', float),  # all null in SF50. Only for turboprops?
+    ColumnDef('E1 ITT', float),  # interstage turbine temp, degrees C
+    ColumnDef('E1 N1', float),  # N1 speed, where 1.0 == 100%
+    ColumnDef('E1 N2', float),  # N2 speed, where 1.0 == 100%
     
 ]
 
-# index garmin_columns
-garmin_column_table = {obj.name: obj for obj in garmin_columns}
+# index GARMIN_COLUMNS
+GARMIN_COLUMN_TABLE = {obj.name: obj for obj in GARMIN_COLUMNS}
 
 
 # as a quick sanity check, look for these columns and reject files
 # that don't have them
-garmin_required_columns = ['Lcl Date', 'Latitude', 'E1 FFlow', 'AfcsOn']
+GARMIN_REQUIRED_COLUMNS = ['Lcl Date', 'Latitude', 'E1 FFlow', 'AfcsOn']
 
 
 class ColumnReader:
@@ -584,9 +583,9 @@ class AvidyneFlightLog(FlightLog):
             raise FlightLogException('File is empty')
 
         # set self.columns and self.column_idx
-        self._set_column_mappings(column_names, avidyne_column_table)
+        self._set_column_mappings(column_names, AVIDYNE_COLUMN_TABLE)
 
-        for name in avidyne_required_columns:
+        for name in AVIDYNE_REQUIRED_COLUMNS:
             if name not in self.column_idx:
                 raise FlightLogException(f'Log appears to be in Avidyne format, but is missing expected column "{name}"')
         
@@ -683,9 +682,9 @@ class GarminFlightLog(FlightLog):
             raise FlightLogException('File is empty')
 
         # set self.columns and self.column_idx
-        self._set_column_mappings(column_names, garmin_column_table)
+        self._set_column_mappings(column_names, GARMIN_COLUMN_TABLE)
 
-        for name in garmin_required_columns:
+        for name in GARMIN_REQUIRED_COLUMNS:
             if name not in self.column_idx:
                 raise FlightLogException(f'Log appears to be in Garmin format, but is missing expected column "{name}"')
         
