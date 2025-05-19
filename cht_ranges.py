@@ -38,7 +38,7 @@ def temperatureSlot(temp):
 
 def read_log(filename, temp_slots):
     log = FlightLog.open(filename)
-    cht_col_names = log.col_CHT()
+    cht_col_names = log.col_cht()
 
     # if the log is from a jet, there are no CHT columns, so skip the file
     if not cht_col_names:

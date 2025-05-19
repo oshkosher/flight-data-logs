@@ -29,7 +29,7 @@ for the given file.
 
   log.col_latitude() - latitude column
   log.col_longitude() - longitude column
-  log.col_CHT() - list of cylinder head temperature columns
+  log.col_cht() - list of cylinder head temperature columns
   log.col_rpm() - engine RPM column
 
 There are also two special computed columns for time data.
@@ -480,7 +480,7 @@ class FlightLog:
         """
         return None
     
-    def col_CHT(self):
+    def col_cht(self):
         """
         Returns a list of column names representing cylinder head
         temperatures. This is useful becuase Avidyne logs name them
@@ -634,7 +634,7 @@ class AvidyneFlightLog(FlightLog):
     def col_longitude(self):
         return 'LON'
 
-    def col_CHT(self):
+    def col_cht(self):
         cht_re = re.compile(r'C\d')
         return [name for name in self.column_idx.keys() if cht_re.match(name)]
 
@@ -721,7 +721,7 @@ class GarminFlightLog(FlightLog):
     def col_longitude(self):
         return 'Longitude'
 
-    def col_CHT(self):
+    def col_cht(self):
         cht_re = re.compile(r'E\d CHT\d')
         return [name for name in self.column_idx.keys() if cht_re.match(name)]
 
@@ -756,13 +756,13 @@ def process_file(filename):
     # print('column_idx: ' + repr(log.column_idx))
     # print(log.col_latitude())
     # print(log.col_longitude())
-    # print(log.col_CHT())
+    # print(log.col_cht())
     # print(log.start_time)
 
 
     column_names = [COLUMN_NAME_ELAPSED,
                     log.col_rpm(),
-                    *log.col_CHT()]
+                    *log.col_cht()]
     print('  '.join(column_names))
     result = log.read(column_names)
     n_cols = len(result)
