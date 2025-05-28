@@ -38,7 +38,7 @@ There are also two special computed columns for time data.
 
 Some oddities to know about:
  - Some logfiles start with blank timestamps and latitude/longitudes, until
-   the GPS gets a fix. Then they work. But sometime the latitude/longitude
+   the GPS gets a fix. Then they work. But sometimes the latitude/longitude
    blanks out again briefly (for example, line 7 of samples/garmin-sr22t-log_161119_154619_KEYW.csv)
 
  - timestamps are not strictly increasing, at least in Garmin files.
@@ -53,7 +53,9 @@ Some oddities to know about:
 import csv
 from datetime import datetime
 from datetime import timedelta
+import os
 import re
+import stat
 import sys
 
 
@@ -749,6 +751,52 @@ class GarminFlightLog(FlightLog):
             raise FlightLogException('Garmin log missing "Lcl Time" column')
         return GarminElapsedReader(self.start_time, date_col, time_col)
 
+
+LOG_SUFFIX_RE = re.compile(r'.*\.(csv|log)$', re.IGNORECASE)
+
+def list_logs(directory_name):
+    """
+    Given a directory name, returns a list of all the files in that
+    directory that might be flight logs (*.csv, *.log)
+
+    If the given directory doesn't exist or is not a directory, an
+    empty list is returned.
+
+    The path of each file is returned, so if directory_name is 'logs' and
+    that directory contains a file name 'foo.log', this will return
+    ['logs/foo.log'].
+    """
+    results = []
+    
+    if not os.path.isdir(directory_name):
+        return results
+
+    for filename in os.listdir(directory_name):
+        if LOG_SUFFIX_RE.match(filename):
+            results.append(os.path.join(directory_name, filename))
+            
+    return results
+
+
+def expand_directories(path_list):
+    """
+    Given a list of filenames and/or directory names, expand all the
+    directory names into the names of all the possible log files in those
+    directories and return a list containing all the original file names
+    as well as all the directory contents.
+
+    For example, if the directory 'logs' contains 'foo.log', given the
+    input ['stuff.log', 'logs'], this will return ['stuff.log', 'foo.log'].
+    """
+    result_list = []
+    for path in path_list:
+        if not os.path.isdir(path):
+            result_list.append(path)
+        else:
+            dir_list = list_logs(path)
+            result_list.extend(dir_list)
+    return result_list
+    
     
 def process_file(filename):
     log = FlightLog.open(filename)
