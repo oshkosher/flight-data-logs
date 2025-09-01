@@ -42,11 +42,17 @@ Some oddities to know about:
    blanks out again briefly (for example, line 7 of samples/garmin-sr22t-log_161119_154619_KEYW.csv)
 
  - timestamps are not strictly increasing, at least in Garmin files.
-   sometimes the logs contain multiple entries in the same
+   Sometimes the logs contain multiple entries in the same
    second. Also Garmin files generally log one entry per second, but
    occasionally they skip a second or two.  In Avidyne files I haven't
    yet found a case where they don't log exactly once every six
    seconds.
+
+For future reference, if I add a coordinate-to-timezone feature, see:
+ - tz_world: https://github.com/evansiroky/timezone-boundary-builder
+ - timezone-boundary-builder → generates polygons for each IANA zone.
+ - timezonefinder: https://pypi.org/project/timezonefinder/
+ - geo-tz (warning: javascript): https://www.npmjs.com/package/geo-tz
 """
 
 
@@ -355,18 +361,51 @@ class AvidyneElapsedReader(AvidyneTimestampReader):
         if now == None:
             return None
         return int((now - self.start_time).total_seconds())
-        
+
+
+UTC_OFFSET_RE = re.compile(r' *([-+])(\d\d):(\d\d)')
+
+def parse_utc_offset(utc_offset):
+    """
+    Given an offset in the form '-05:00' return a timedelta object
+    that applies this offset. For example, given '-05:00', it will
+    return timedelta(minutes=-5*60).
+
+    If utc_offset cannot be parsed, returns None.
+    """
+    match = UTC_OFFSET_RE.match(utc_offset)
+    if not match: return None
+    sign, hours, minutes = match.groups()
+    sign = -1 if sign == '-' else +1
+    return timedelta(minutes = sign * (int(hours) * 60 + int(minutes)))
+
         
 class GarminTimestampReader(ColumnReader):
     """
     Generate timestamp column for Garmin logs
     """
-    def __init__(self, date_col_idx, time_col_idx):
+    def __init__(self, date_col_idx, time_col_idx, utc_offset_col_idx):
         self.date_col_idx = date_col_idx
         self.time_col_idx = time_col_idx
+        self.utc_offset_col_idx = utc_offset_col_idx
+
+        # The log contains local times and a UTCOfst field in the
+        # form '-05:00'. UTC time is local - UTCOfst, so given
+        # a local timestamp of 11:45:33 and UTCOfst of -05:00, the
+        # UTC time is  11:45:33 + (5:00:00) = 16:45:33.
+        
+        # To save work decoding the UTCOfst field and computing the offset,
+        # cache the last value seen for UTCOfst and only update 
+        # utc_offset_hm when it changes.
+        self.prev_utc_offset = None
+
+        # timedelta object, converting UTC to local
+        # so to convert from local to UTC, subtract this
+        self.from_utc_offset = None
 
     def max_col_needed(self):
-        return max(self.date_col_idx, self.time_col_idx)
+        return max(self.date_col_idx, self.time_col_idx,
+                   self.utc_offset_col_idx)
 
     def makeTimestamp(self, input_row):
         year_month_day = parse_int_tuple(input_row[self.date_col_idx])
@@ -375,7 +414,15 @@ class GarminTimestampReader(ColumnReader):
         hour_minute_second = parse_int_tuple(input_row[self.time_col_idx])
         if len(hour_minute_second) != 3:
             return None
-        return datetime(*year_month_day, *hour_minute_second)
+        utc_offset = input_row[self.utc_offset_col_idx]
+        # print(f'maketimestamp {year_month_day!r}, {hour_minute_second!r}, {utc_offset!r}')
+        if utc_offset != self.prev_utc_offset:
+            self.prev_utc_offset = utc_offset
+            self.from_utc_offset = parse_utc_offset(utc_offset)
+        if self.from_utc_offset == None:
+            return None
+        return (datetime(*year_month_day, *hour_minute_second) -
+                self.from_utc_offset)
 
     def read(self, input_row):
         return self.makeTimestamp(input_row)
@@ -385,8 +432,9 @@ class GarminElapsedReader(GarminTimestampReader):
     """
     Generate elapsed column for Garmin logs
     """
-    def __init__(self, start_time, date_col_idx, time_col_idx):
-        super().__init__(date_col_idx, time_col_idx)
+    def __init__(self, start_time, date_col_idx, time_col_idx,
+                 utc_offset_col_idx):
+        super().__init__(date_col_idx, time_col_idx, utc_offset_col_idx)
         self.start_time = start_time
 
     def read(self, input_row):
@@ -546,6 +594,7 @@ class FlightLog:
                 # short row, probably end of file. skip it
                 continue
             line_no += 1
+            # print(f'read line {line_no}: {row}')
             for output_idx in range(n_cols):
                 try:
                     value = column_readers[output_idx].read(row)
@@ -553,6 +602,7 @@ class FlightLog:
                     print(f'Error reading {self.filename}, line {line_no}: {e}')
                     return result
                 result[output_idx].append(value)
+            # print(f'  {len(result[0])} rows read')
                 
         return result
 
@@ -712,8 +762,13 @@ class GarminFlightLog(FlightLog):
                 assert(len(year_month_day) == 3)
                 hour_minute_second = parse_int_tuple(row[1])
                 assert(len(hour_minute_second) == 3)
+
+                utc_offset = parse_utc_offset(row[2])
+                if utc_offset == None:
+                    continue
                 
-                return datetime(*year_month_day, *hour_minute_second)
+                return (datetime(*year_month_day, *hour_minute_second)
+                        - utc_offset)
             
         return None
 
@@ -740,7 +795,10 @@ class GarminFlightLog(FlightLog):
         time_col = self.column_idx.get('Lcl Time', -1)
         if time_col == -1:
             raise FlightLogException('Garmin log missing "Lcl Time" column')
-        return GarminTimestampReader(date_col, time_col)
+        utc_offset_col = self.column_idx.get('UTCOfst', -1)
+        if utc_offset_col == -1:
+            raise FlightLogException('Garmin log missing "UTCOfst" column')
+        return GarminTimestampReader(date_col, time_col, utc_offset_col)
 
     def createElapsedColumnReader(self):
         date_col = self.column_idx.get('Lcl Date', -1)
@@ -749,7 +807,11 @@ class GarminFlightLog(FlightLog):
         time_col = self.column_idx.get('Lcl Time', -1)
         if time_col == -1:
             raise FlightLogException('Garmin log missing "Lcl Time" column')
-        return GarminElapsedReader(self.start_time, date_col, time_col)
+        utc_offset_col = self.column_idx.get('UTCOfst', -1)
+        if utc_offset_col == -1:
+            raise FlightLogException('Garmin log missing "UTCOfst" column')
+        return GarminElapsedReader(self.start_time, date_col, time_col,
+                                   utc_offset_col)
 
 
 LOG_SUFFIX_RE = re.compile(r'.*\.(csv|log)$', re.IGNORECASE)
