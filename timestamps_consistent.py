@@ -5,15 +5,34 @@ Scan logs to see if my assumptions about the consistency of their
 timestamps are correct.
 
 Assumptions:
- - in Garmin files:
-   - the date, time, and UTCOfst fields may start blank, then once any one
-     of them is non-blank all will be non-blank and contain valid values
+ - In Garmin files:
+   - The date, time, and UTCOfst fields may start blank, then once any one
+     of them is non-blank all will be non-blank and contain valid values.
+
+     counter-examples:
+     N63EK  log_150326_111558_KRYV.csv
+     first line is valid, then 4 blank, then good
+
+     N63EK  log_150326_093129______.csv
+     first 2 lines are valid, then 2 blank, then good
+
    - The UTCOfst field may change (a change initiated by the user, not an
      automatic switch) and this will trigger a jump in the date/time, but
      the UTC time (date/time - UTCOfst) will not jump more than a few seconds.
+
+     counterexamples
+     N63EK  log_170717_195245_KDWA.csv
+       line 833 is 2017-07-17, 20:00:33
+       line 834 is 2017-07-17, 20:00:20, a jump of -13 seconds, 13 minutes
+       into the log
+
+
+   - If 'Lcl Date', 'Lcl Time', and 'UTCOfst' fields are concatenated
+     and the result is non-blank, then the result will be successfully
+     parsed with datetime.strptime(s, '%Y-%m-%d %H:%M:%S %z')
    - The jump between adjacent UTC time values will usually be 1 second,
      but will occasionally be up to +-20 seconds.
- - in Avidyne files:
+ - In Avidyne files:
    - the time may jump once, but only at the beginning
      of the file, before the latitude&longitude are valid
  - once valid coordinates are listed, every later row will have valid
@@ -35,11 +54,12 @@ HMS_RE = re.compile(r'(\d\d):(\d\d):(\d\d)')
 UTC_OFFSET_RE = re.compile(r' *([-+])(\d\d):(\d\d)')
 DEGREES_RE = re.compile(r'([-+]?\d+.\d+)')
 DATE_TIME_FMT = '%Y-%m-%d %H:%M:%S'
+DATE_TIME_TZ_FMT = '%Y-%m-%d %H:%M:%S %z'
 GARMIN_MIN_TIME_JUMP = 0
 GARMIN_MAX_TIME_JUMP = 10
 
-MIN_TIME = datetime(1990, 1, 1, 0, 0, 0)
-MAX_TIME = datetime(2100, 1, 1, 0, 0, 0)
+MIN_TIME = datetime(1990, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+MAX_TIME = datetime(2100, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
 
 garmin_max_time_gap = 0
 garmin_time_gaps = {}
@@ -107,7 +127,8 @@ def read_log_garmin(log):
     errors = 0
     first_valid_time_seen = False
     position_initial_invalid = True
-    prev_sec = None
+    prev_utc_sec = None
+    prev_timestamp_str = None
     time_diffs = {}
     
     # save the previous value of UTCOfst to avoid recomputing from_utc_offset
@@ -135,56 +156,55 @@ def read_log_garmin(log):
             errors += 1
             continue
 
+        if not time_valid:
+            if first_valid_time_seen:
+                print(f'ERROR time went invalid {log.filename}:{line_no} date={date_col[i]}, time={time_col[i]}, utc_offset={utc_offset_col[i]}')
+                first_valid_time_seen = False
+                errors += 1
+            continue
+
         if not first_valid_time_seen:
-            if not time_valid:
-                continue
-            
             first_valid_time_seen = True
 
-        else:  # first_valid_time_seen==True
-            if not time_valid:
-                print(f'ERROR time went invalid {log.filename}:{line_no} date={date_col[i]}, time={time_col[i]}, utc_offset={utc_offset_col[i]}')
-                errors += 1
-                continue
-
         # compute from_utc_offset
-        if utc_offset_col[i] != prev_utc_offset:
-            prev_utc_offset = utc_offset_col[i]
-            sign, hours, minutes = utc_offset_match.groups()
-            sign = -1 if sign == '-' else +1
-            min_diff = sign * (int(hours) * 60 + int(minutes))
-            from_utc_offset = timedelta(minutes = min_diff)
+        # if utc_offset_col[i] != prev_utc_offset:
+        #     prev_utc_offset = utc_offset_col[i]
+        #     sign, hours, minutes = utc_offset_match.groups()
+        #     sign = -1 if sign == '-' else +1
+        #     min_diff = sign * (int(hours) * 60 + int(minutes))
+        #     from_utc_offset = timedelta(minutes = min_diff)
                 
         
         # if not time_match:
         #     print(f'{log.filename}:{line_no} bad time {time_col[i]!r}')
         #     errors += 1
 
-        date_time_str = date_col[i] + ' ' + time_col[i]
+        timestamp_str = (date_col[i] + ' ' + time_col[i] + ' '
+                         + utc_offset_col[i])
         try:
-            local_timestamp = datetime.strptime(date_time_str, DATE_TIME_FMT)
-            # print(time_struct)
-            time_seconds = calendar.timegm(time_struct)
-            # print(time_seconds)
+            local_timestamp = datetime.strptime(timestamp_str, DATE_TIME_TZ_FMT)
         except ValueError:
-            print(f'ERROR bad datetime {log.filename}:{line_no} {date_time_str}')
+            print(f'ERROR bad datetime {log.filename}:{line_no} {timestamp_str}')
             errors += 1
             continue
-
-        assert from_utc_offset
-        utc_timestamp = local_timestamp - from_utc_offset
 
         # catch problems like a date of 1970-01-01 or 9999-12-31
-        if utc_timestamp < MIN_TIME or utc_timestamp > MAX_TIME:
-            print(f'ERROR bad datetime {log.filename}:{line_no} {date_time_str} outside expected range (year 1990-2100)')
+        if local_timestamp < MIN_TIME or local_timestamp > MAX_TIME:
+            print(f'ERROR bad datetime {log.filename}:{line_no} {timestamp_str} outside expected range (year 1990-2100)')
             errors += 1
             continue
+        
+        utc_seconds = int(local_timestamp.timestamp())
 
-        if prev_sec != None:
-            sec_diff = time_seconds - prev_sec
+        if prev_utc_sec != None:
+            sec_diff = utc_seconds - prev_utc_sec
             if sec_diff < GARMIN_MIN_TIME_JUMP or sec_diff > GARMIN_MAX_TIME_JUMP:
-                print(f'{log.filename}:{line_no} bad time jump of {sec_diff} seconds to {date_time_str}')
+                print(f'ERROR bad time jump{log.filename}:{line_no} {sec_diff} seconds to {timestamp_str}')
             else:
+
+                # print(f'{prev_timestamp_str} - {timestamp_str}: {sec_diff} seconds')
+                prev_timestamp_str = timestamp_str
+                
                 garmin_max_time_gap = max(garmin_max_time_gap, sec_diff)
                 # count = time_diffs.get(sec_diff, 0)
                 # time_diffs[sec_diff] = count + 1
@@ -192,7 +212,7 @@ def read_log_garmin(log):
                 count = garmin_time_gaps.get(sec_diff, 0)
                 garmin_time_gaps[sec_diff] = count + 1
 
-        prev_sec = time_seconds
+        prev_utc_sec = utc_seconds
 
             
                 

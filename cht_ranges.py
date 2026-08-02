@@ -67,6 +67,11 @@ def read_log(filename, temp_slots):
         
         time_slice = elapsed - prev_time
         prev_time = elapsed
+        
+        # complain about time jumping backwards
+        if time_slice < 0:
+            print(f'{filename} line {r+1} elapsed={elapsed} prev={prev_time}')
+            continue
 
         for c in range(2, n_cols):
             cht = data[c][r]

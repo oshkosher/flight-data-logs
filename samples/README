@@ -10,8 +10,35 @@ garmin-sf50-log_240810_104802_KAPA.csv
   like cylinder head temperatures, but it does have latitude, longitude,
   alitude and all that.
 
-In garmin-sf50-log_240810_104802_KAPA.csv, column 4 (AtvWpt) there's a
-non-ASCII character, hex 0x80 in lines 69 through 1002: 6385<0x80>
-I don't know what's going on there. The csv.reader class choked on it
-until I changed the file encoding to Latin-1.
+  Also, in column 4 (AtvWpt) there's a non-ASCII character, hex 0x80
+  in lines 69 through 1002: 6385<0x80> I don't know what's going on
+  there. The csv.reader class choked on it until I changed the file
+  encoding to Latin-1.
 
+avidyne-sr22tn-timejump-Engine_090121_191809_out.log
+  This file jumps backwards in time from 19:18:24 to 19:17:00, a few seconds
+  before the GPS gets a location fix.
+
+samples/garmin-sr22t-tzjump-log_150516_131602_KOGD.csv
+  at line 10636 this log jumps from 16:19:15 to 14:19:16, but also the UTCOfst
+  jumps from -05:00 to -07:00.
+
+garmin-sf50-contains-NUL-log_240326_140125_KPGA.csv
+  At line 2156, there is a 1k block of 0 bytes,
+  and that is after 24 repetitions of a line with the timestamp
+  2024-03-26, 14:31:47
+  That is a 1k block being repeated, starting at " 3704, " in the
+  line with timestamp "14:31:45", byte offset 1092608 (1024*1067).
+
+$ ~/GitHub/flight-data-logs/find_repeated_blocks.py *
+log_240326_113520_KHWD.csv
+  duplicate at 2898944 and 2899968
+log_240326_140125_KPGA.csv
+  duplicate at 1090560 and 1091584
+log_240326_171632_KTYR.csv
+  duplicate at 3429376 and 3430400
+log_240401_064201_CYUL.csv
+  duplicate at 1988608 and 1989632
+
+
+1092609
